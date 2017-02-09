@@ -1,105 +1,99 @@
-//Program your scraper so that it visits the website http://shirts4mike.com and uses http://shirts4mike.com/shirts.php 
-
+var fs = require("fs");
 var cheerio = require('cheerio');
 var json2csv = require('json2csv');
 var request = require('request');
-var urls = [];
-var urlsId = [];
-var productPage = [];
+var url = require("url");
+var moment = require("moment");
+var csv = require("fast-csv");
+var date = moment().format("YYYY-MM-DD");
 
+var csvStream = csv.createWriteStream({headers: true});
+writableStream = fs.createWriteStream("./data/" + date + ".csv");
+
+
+var productpageURL = "http://shirts4mike.com/shirts.php";
+
+
+// Throws with a ReferenceError because z is undefined
+try {
+    fs.accessSync("./data");
+} catch (err) {
+  // Handle the error here.
+    fs.mkdirSync("./data");
+}
+
+
+request(productpageURL, function(error, response, body){
     
-var url = "http://shirts4mike.com/shirts.php";
-
-
-request(url, function (error, response, body) {
-        if (!error && response.statusCode === 200) {    
-            // Use body; no need to handle chunks of data *or* redirects!
-            var $ = cheerio.load(body);
-
-        //tshirts urls
-        $("a[href*='shirt']","#content").each(function() {
-            var link = $(this);
-            var href = link.attr("href");
-            urls.push(href);    
-        }); 
-         
-        $(urls).each(function () {
-            var adress = this.replace("shirt.php","");
-            urlsId.push(adress);        
-        });
-    
-        $(urlsId).each(function() {
-            var https = url + "/" + this;
-            productPage.push(https);
-        });
-            console.log(productPage);
-        } else { console.log("We've encountered an error:");
-               }
+   if (!error && response.statusCode === 200) {
+       scrapURL(body);
+   } else {
+       console.log("There’s been a 404 error. Cannot connect to the to http://shirts4mike.com.");
+   }
 });
 
 
-          
-for (var i = 0; i < productPage.lenght; i++) {
-    console.log(i);
-        request(productPage[i], function(error, response, body) {
-            if (!error && response.statusCode === 200) {
-        
-                var $ = cheerio.load(body);
-                
-                /*The scraper should get the price, title, url and image url from the product page and save this information into a CSV file.*/
-                console.log($(".price").text());
-              
-                
-                } else {
-                    console.log("error");
-                }
-        });
-    }
+//Function scraping the urls 
+function scrapURL(body) {
 
-console.log("end");
+    var $ = cheerio.load(body);
 
+     $("a[href*='shirt']","#content").each(function() {
+            var link = $(this);
+            var href = link.attr("href");
+            var productLinks = url.resolve(productpageURL,"/" + href);
+            //console.log(productLinks);
+            visitProductpage(productLinks);
+    });
+} 
 
-
-//http://www.netinstructions.com/how-to-make-a-simple-web-crawler-in-javascript-and-node-js/
-
-/*
-
-let $ = cheerio.load('<h2 class="title">Hello world</h2>');
- 
-$('h2.title').text('Hello there!');
-$('h2').addClass('welcome');
- 
-$.html(); 
-
-
-var fields = ['car', 'price', 'color'];
-
-var myData = [
-  {
-    "car": "Audi",
-    "price": 40000,
-    "color": "blue"
-  }, {
-    "car": "BMW",
-    "price": 35000,
-    "color": "black"
-  }, {
-    "car": "Porsche",
-    "price": 60000,
-    "color": "green"
-  }
-];
-
-
-
-try {
-  var result = json2csv({ data: myData, fields: fields });
-  console.log(result);
-} catch (err) {
-  // Errors are thrown for bad options, or if the data is empty and no fields are provided. 
-  // Be sure to provide fields if it is possible that your data array will be empty. 
-  console.error(err);
+//Function that goes to each product page
+function visitProductpage(productLinks){
+    console.log(productLinks);
+request(productLinks, function (error, response, body){ 
+    if(!error && response.statusCode === 200) {
+        scrapProductpage(body, productLinks);
+        //console.log("function visitProductpage")
+        } else { 
+            console.log(error.message);
+        }
+});
 }
-*/
+
+
+//Assume that the the column headers in the CSV need to be in a certain order to be correctly entered into a database. They should be in this order: Title, Price, ImageURL, URL, and Time
+//Function that scraps relevant data 
+function scrapProductpage(body,productLinks) {
+    
+    var $ = cheerio.load(body);
+    var Title = $(".shirt-details h1").text().substr(4);
+    console.log(Title);
+    
+    var price = $(".price").text();
+    console.log(price);
+    
+    var Imageurl = $(".shirt-picture img").attr("src");
+    console.log(Imageurl);
+    
+    console.log(productLinks);
+    
+    csvStream.write({
+        Title: Title,
+        Price: price,
+        Imageurl: Imageurl,
+        URL: productLinks,
+        Time: moment().format("HH:mm:ss")
+        
+    });
+} 
+
+
+csvStream.pipe(writableStream);
+
+writableStream.on("finish", function(){
+  console.log("DONE!");
+});
+ 
+
 
 
